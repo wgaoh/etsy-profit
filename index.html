@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Etsy Profit Snapshot - Free</title>
+  <link rel="stylesheet" href="tailwind.min.css">
+  <script src="papaparse.min.js"></script>
+  <script src="chart.umd.min.js"></script>
+  <style>
+    .card-gradient { background: linear-gradient(135deg, #ffffff 0%, #fef7f2 100%); }
+    .highlight-card { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
+    .upload-glow { box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1); }
+    .upload-glow:hover { box-shadow: 0 0 0 5px rgba(249, 115, 22, 0.2); }
+    .tab-btn.active { color: #ea580c; border-color: #f97316; background-color: #fff7ed; }
+    .profit-high { background-color: #dcfce7; }
+    .profit-mid { background-color: #fef9c3; }
+    .profit-low { background-color: #fee2e2; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-orange-50 min-h-screen">
+
+  <header class="bg-white/80 backdrop-blur-sm shadow-sm sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center text-xl">📊</div>
+        <div>
+          <h1 class="text-xl font-bold text-gray-800">Etsy Profit Snapshot</h1>
+          <p class="text-xs text-gray-500">See your real profit per order. Free. No signup.</p>
+        </div>
+      </div>
+      <span class="text-xs font-medium text-orange-600 bg-orange-50 px-3 py-1 rounded-full border border-orange-200">BETA</span>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- 上传区 -->
+    <div id="upload-section" class="bg-white rounded-2xl p-10 shadow-sm border-2 border-dashed border-orange-200 text-center mb-8 upload-glow transition-all duration-200">
+      <div class="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl">📁</div>
+      <p class="text-xl font-semibold text-gray-700 mb-1">Upload your Etsy Order Items CSV</p>
+      <p class="text-sm text-gray-400 mb-6">or drag & drop anywhere</p>
+      <label class="cursor-pointer inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium px-6 py-3 rounded-xl transition-colors shadow-sm">
+        <span>📂</span> Choose File
+        <input type="file" id="csv-file" accept=".csv,.tsv,.txt" class="hidden" onchange="handleFile(event)">
+      </label>
+      <div class="mt-6 text-left max-w-lg mx-auto bg-orange-50 border border-orange-200 rounded-xl p-5">
+        <p class="text-sm font-semibold text-orange-800 mb-3 flex items-center gap-2">
+          <span>📘</span> How to export your CSV from Etsy:
+        </p>
+        <ol class="text-sm text-orange-700 space-y-1.5">
+          <li class="flex items-start gap-2"><span class="font-bold text-orange-400 min-w-[20px]">1.</span>Go to <strong>Shop Manager</strong> → <strong>Settings</strong> → <strong>Download Data</strong></li>
+          <li class="flex items-start gap-2"><span class="font-bold text-orange-400 min-w-[20px]">2.</span>Click the <strong>Order Items</strong> tab (not Orders)</li>
+          <li class="flex items-start gap-2"><span class="font-bold text-orange-400 min-w-[20px]">3.</span>Choose your date range</li>
+          <li class="flex items-start gap-2"><span class="font-bold text-orange-400 min-w-[20px]">4.</span>Click <strong>Download CSV</strong></li>
+          <li class="flex items-start gap-2"><span class="font-bold text-orange-400 min-w-[20px]">5.</span>Upload that file here</li>
+        </ol>
+        <div class="mt-3 flex items-start gap-2 bg-orange-100 rounded-lg p-2.5">
+          <span>⚠️</span>
+          <p class="text-xs text-orange-600">Please use the <strong>Order Items</strong> CSV to get accurate per-product profit. The Orders CSV does not contain item-level fee breakdowns.</p>
+        </div>
+        <p class="mt-3 text-xs text-gray-500">
+          No file? <a href="#" onclick="downloadSampleCSV();return false;" class="text-orange-600 underline">Download a sample CSV</a> to test.
+        </p>
+      </div>
+    </div>
+
+    <!-- 结果区 -->
+    <div id="results-section" class="hidden space-y-6">
+      <div class="flex justify-between items-center flex-wrap gap-4">
+        <button id="new-upload-btn" class="text-sm text-orange-600 hover:text-orange-700 underline underline-offset-4">
+          ← New Upload
+        </button>
+        <div class="flex items-center gap-3 flex-1 justify-end">
+          <div id="currency-alert" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 flex-1"></div>
+          <div id="currency-switcher" class="hidden flex items-center gap-2 ml-4">
+            <span class="text-xs text-gray-500 font-medium">Currency:</span>
+            <div id="currency-buttons" class="flex gap-1"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-4" id="summary-cards"></div>
+
+      <!-- Fee Settings 移到此处 -->
+      <div id="fee-settings" class="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">Fee Settings</h3>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label class="text-xs text-gray-500">Etsy Transaction Fee (%)</label>
+            <input type="number" id="etsy-txn-rate" value="6.5" step="0.1" class="w-full border rounded px-2 py-1 text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500">Listing Fee per Item ($)</label>
+            <input type="number" id="etsy-list-fee" value="0.20" step="0.01" class="w-full border rounded px-2 py-1 text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500">Payment Processing (%)</label>
+            <input type="number" id="pay-proc-rate" value="3.0" step="0.1" class="w-full border rounded px-2 py-1 text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500">Payment Fixed Fee ($)</label>
+            <input type="number" id="pay-fixed-fee" value="0.25" step="0.01" class="w-full border rounded px-2 py-1 text-sm">
+          </div>
+        </div>
+        <button id="apply-fees-btn" class="mt-3 bg-orange-500 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-600 transition shadow-sm">
+          ⚡ Apply Fees to All Orders
+        </button>
+        <p class="text-xs text-gray-400 mt-2">* Click this after uploading CSV to see accurate profit and rankings.</p>
+      </div>
+
+      <!-- SKU 汇总 + 排行榜 -->
+      <div id="sku-summary-section" class="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">📦 Product Summary (by SKU)</h3>
+        <div class="overflow-x-auto rounded-xl border border-gray-100 mb-6">
+          <table class="w-full text-xs" id="sku-summary-table">
+            <thead>
+              <tr class="bg-gray-50 text-left">
+                <th class="py-2 px-3 font-semibold text-gray-600">SKU</th>
+                <th class="py-2 px-3 font-semibold text-gray-600 text-right">Units Sold</th>
+                <th class="py-2 px-3 font-semibold text-gray-600 text-right">Revenue (Net)</th>
+                <th class="py-2 px-3 font-semibold text-gray-600 text-right">COGS Total</th>
+                <th class="py-2 px-3 font-semibold text-gray-600 text-right">Profit</th>
+                <th class="py-2 px-3 font-semibold text-gray-600 text-right">Margin</th>
+              </tr>
+            </thead>
+            <tbody id="sku-summary-body"></tbody>
+          </table>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="ranking-cards"></div>
+      </div>
+
+      <!-- SKU Cost Settings -->
+      <div id="sku-cost-settings" class="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">SKU Cost Settings (COGS & Shipping)</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="border border-gray-200 rounded-xl p-4">
+            <p class="text-xs font-medium text-gray-500 mb-3">Quick Set by SKU</p>
+            <div class="grid grid-cols-3 gap-2 mb-3">
+              <input type="text" id="quick-sku" placeholder="SKU" class="border rounded px-2 py-1 text-xs">
+              <input type="number" id="quick-cogs" placeholder="COGS" step="0.01" min="0" class="border rounded px-2 py-1 text-xs">
+              <input type="number" id="quick-shipping" placeholder="Shipping" step="0.01" min="0" class="border rounded px-2 py-1 text-xs">
+            </div>
+            <button id="apply-quick-sku" class="bg-orange-500 text-white px-3 py-1.5 rounded text-xs hover:bg-orange-600 transition">Apply to this SKU</button>
+          </div>
+          <div class="border border-gray-200 rounded-xl p-4">
+            <p class="text-xs font-medium text-gray-500 mb-3">Batch Set (paste CSV: SKU,COGS,Shipping per line)</p>
+            <textarea id="batch-sku-text" rows="4" placeholder="SKU,COGS,Shipping&#10;MUG001,5.00,4.50&#10;NECK002,8.00,3.20" class="w-full border rounded px-2 py-1 text-xs mb-3"></textarea>
+            <button id="apply-batch-sku" class="bg-orange-500 text-white px-3 py-1.5 rounded text-xs hover:bg-orange-600 transition">Batch Apply</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 切换 -->
+      <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div class="flex border-b border-gray-200">
+          <button id="tab-table-btn" class="tab-btn active px-6 py-3 text-sm font-semibold text-orange-600 border-b-2 border-orange-500 bg-orange-50 focus:outline-none">
+            📋 Order Details
+          </button>
+          <button id="tab-charts-btn" class="tab-btn px-6 py-3 text-sm font-semibold text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:bg-gray-50 focus:outline-none">
+            📊 Charts
+          </button>
+        </div>
+
+        <div id="tab-table-content" class="p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-base font-semibold text-gray-700 flex items-center gap-2"><span>📋</span> Order Details</h2>
+            <button id="export-csv-btn" class="text-xs bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 transition">Export to CSV</button>
+          </div>
+          <p class="text-xs text-gray-400 mb-4 flex items-center gap-1"><span>✏️</span> Fill in costs, or use Fee / SKU settings above.</p>
+          <div class="overflow-x-auto rounded-xl border border-gray-100 shadow-sm">
+            <table class="w-full text-sm min-w-[900px] table-fixed" id="orders-table">
+              <thead>
+                <tr class="bg-gray-50 text-left">
+                  <th class="py-2 px-2 font-semibold text-gray-600 text-xs whitespace-nowrap" style="width:7%">Date</th>
+                  <th class="py-2 px-2 font-semibold text-gray-600 text-xs" style="width:15%">Item</th>
+                  <th class="py-2 px-2 font-semibold text-gray-600 text-xs" style="width:7%">SKU</th>
+                  <th class="py-2 px-2 font-semibold text-gray-600 text-xs text-center" style="width:5%">Qty</th>
+                  <th class="py-2 px-2 font-semibold text-gray-600 text-xs text-right" style="width:10%">Est. Net</th>
+                  <th class="py-2 px-1 font-semibold text-gray-600 text-xs text-right" style="width:8%">Etsy Fee</th>
+                  <th class="py-2 px-1 font-semibold text-gray-600 text-xs text-right" style="width:8%">Paymt Fee</th>
+                  <th class="py-2 px-1 font-semibold text-gray-600 text-xs text-right" style="width:8%">Shipping</th>
+                  <th class="py-2 px-1 font-semibold text-gray-600 text-xs text-right" style="width:8%">COGS</th>
+                  <th class="py-2 px-2 font-semibold text-gray-600 text-xs text-right" style="width:8%">Profit</th>
+                </tr>
+              </thead>
+              <tbody id="orders-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="tab-charts-content" class="p-6 hidden">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white rounded-xl p-4 shadow-sm card-gradient">
+              <h3 class="text-base font-semibold text-gray-700 mb-2 flex items-center gap-2"><span>🍩</span> Fee Breakdown</h3>
+              <canvas id="fees-chart" height="200"></canvas>
+            </div>
+            <div class="bg-white rounded-xl p-4 shadow-sm card-gradient">
+              <div class="flex justify-between items-center mb-2">
+                <h3 class="text-base font-semibold text-gray-700 flex items-center gap-2"><span>📈</span> Daily Profit</h3>
+                <div class="flex gap-1">
+                  <button id="group-day" class="group-btn px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">Day</button>
+                  <button id="group-week" class="group-btn active px-2 py-1 text-xs rounded bg-orange-500 text-white">Week</button>
+                  <button id="group-month" class="group-btn px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">Month</button>
+                </div>
+              </div>
+              <canvas id="daily-chart" height="200"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-6 shadow-sm text-center border border-orange-100">
+        <p class="text-base font-semibold text-gray-700 mb-3">👋 Enjoying Etsy Profit Snapshot?</p>
+        <p class="text-sm text-gray-500 mb-5">Your feedback helps us build a better tool for sellers like you.</p>
+        <div class="flex justify-center gap-4 flex-wrap">
+          <a href="https://docs.google.com/forms/d/e/1FAIpQLScJY4QAg1KYDO5Bl42uSKrynlewHn9aFyc0yaE0d5WNhnAFtQ/viewform?usp=header" target="_blank" 
+             class="inline-flex items-center gap-2 px-5 py-2.5 bg-orange-500 text-white font-medium text-sm rounded-lg shadow-sm hover:bg-orange-600 transition-colors">
+            📝 Quick Feedback (3 questions)
+          </a>
+          <a href="mailto:gaohai32@gmail.com?subject=Etsy%20Profit%20Snapshot%20Feedback" 
+             class="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium text-sm rounded-lg shadow-sm hover:bg-gray-50 transition-colors">
+            ✉️ Send us an email
+          </a>
+        </div>
+        <p class="text-xs text-gray-400 mt-4">Or email us directly at <a href="mailto:gaohai32@gmail.com" class="text-orange-600 underline">gaohai32@gmail.com</a></p>
+      </div>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
